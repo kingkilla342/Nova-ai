@@ -44,7 +44,7 @@ export default function ChatPanel({ messages, onSend, loading, project }) {
         <button
           onClick={() => setWebEnabled(!webEnabled)}
           className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono tracking-wider transition-all border ${
-            webEnabled ? 'bg-[rgba(0,255,106,0.1)] border-[rgba(0,255,106,0.3)] text-hud-green' : 'border-[rgba(0,255,106,0.08)] text-hud-text-dim'
+            webEnabled ? 'glass-tag text-hud-green border-[rgba(0,255,106,0.25)]' : 'border-[rgba(0,255,106,0.08)] text-hud-text-dim'
           }`}
         >
           <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -55,19 +55,20 @@ export default function ChatPanel({ messages, onSend, loading, project }) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 data-stream">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 && (
-          <div className="text-center py-12 animate-fade">
+          <div className="text-center py-10 animate-fade">
             <div className="w-16 h-16 mx-auto mb-4 hexagon bg-[rgba(0,255,106,0.06)] flex items-center justify-center animate-float">
               <div className="w-12 h-12 hexagon bg-[rgba(0,255,106,0.1)] flex items-center justify-center glow">
                 <span className="font-display font-black text-hud-green text-glow text-xl">N</span>
               </div>
             </div>
             <h3 className="font-display text-hud-green text-glow-subtle tracking-[0.2em] text-sm mb-1">SYSTEM READY</h3>
-            <p className="font-mono text-[10px] text-hud-text-dim max-w-[260px] mx-auto leading-relaxed tracking-wide">
+            <p className="font-mono text-[10px] text-hud-text-dim max-w-[260px] mx-auto leading-relaxed tracking-wide mb-6">
               Describe your target. Nova will analyze, plan, and execute.
             </p>
-            <div className="mt-6 space-y-1.5">
+            <div className="glass-card hud-corners rounded-lg p-4 max-w-[280px] mx-auto space-y-1.5">
+              <p className="font-mono text-[8px] text-hud-text-dim tracking-[0.3em] uppercase mb-2">QUICK START</p>
               {[
                 'Create a /heal command with cooldown',
                 'Add a custom enchantment system',
@@ -76,7 +77,7 @@ export default function ChatPanel({ messages, onSend, loading, project }) {
                 <button
                   key={s}
                   onClick={() => { setInput(s); inputRef.current?.focus(); }}
-                  className="block w-full text-left px-3 py-2 rounded text-[10px] text-hud-text-dim hover:text-hud-green hover:bg-[rgba(0,255,106,0.04)] border border-transparent hover:border-[rgba(0,255,106,0.15)] transition-all font-mono tracking-wide"
+                  className="block w-full text-left px-3 py-2 rounded text-[10px] text-hud-text-dim hover:text-hud-green glass hover:border-[rgba(0,255,106,0.2)] transition-all font-mono tracking-wide"
                 >
                   ▸ {s}
                 </button>
@@ -88,24 +89,28 @@ export default function ChatPanel({ messages, onSend, loading, project }) {
         {messages.map((msg, idx) => (
           <div key={idx} className={`animate-slide-up ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
             {msg.role === 'user' ? (
-              <div className="max-w-[85%] px-3.5 py-2.5 rounded rounded-br-none bg-[rgba(0,255,106,0.06)] border border-[rgba(0,255,106,0.15)] text-sm text-hud-text-bright font-sans">
+              <div className="max-w-[85%] px-4 py-3 rounded-xl rounded-br-sm glass-user text-sm text-hud-text-bright font-sans">
                 {msg.content}
               </div>
             ) : (
               <div className="space-y-2">
-                <div className={`text-sm leading-relaxed ${msg.isError ? 'text-hud-red' : 'text-hud-text'}`}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-4 h-4 hexagon bg-[rgba(0,255,106,0.15)] flex items-center justify-center">
+                {/* AI message */}
+                <div className={`glass-message rounded-xl rounded-tl-sm px-4 py-3 ${msg.isError ? '' : ''}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-5 h-5 hexagon bg-[rgba(0,255,106,0.12)] flex items-center justify-center">
                       <span className="text-hud-green text-[7px] font-bold">N</span>
                     </div>
                     <span className="font-display text-[9px] text-hud-green tracking-[0.2em]">NOVA</span>
-                    <div className="flex-1 h-px bg-[rgba(0,255,106,0.08)]" />
+                    <div className="flex-1 h-px bg-[rgba(0,255,106,0.06)]" />
                   </div>
-                  <div className="pl-6 whitespace-pre-wrap font-sans">{msg.content}</div>
+                  <div className={`whitespace-pre-wrap font-sans text-sm leading-relaxed ${msg.isError ? 'text-hud-red' : 'text-hud-text'}`}>
+                    {msg.content}
+                  </div>
                 </div>
 
+                {/* Artifacts */}
                 {msg.artifacts?.length > 0 && (
-                  <div className="pl-6">
+                  <div className="ml-2">
                     <button
                       onClick={() => setExpandedArtifacts(p => ({ ...p, [idx]: !p[idx] }))}
                       className="flex items-center gap-1.5 font-mono text-[9px] text-hud-text-dim hover:text-hud-green transition tracking-wider"
@@ -116,11 +121,13 @@ export default function ChatPanel({ messages, onSend, loading, project }) {
                       {msg.artifacts.length} FILE ACTION{msg.artifacts.length !== 1 ? 'S' : ''}
                     </button>
                     {expandedArtifacts[idx] && (
-                      <div className="mt-1.5 hud-panel rounded p-2 space-y-1 animate-fade">
+                      <div className="mt-1.5 glass rounded-lg p-2.5 space-y-1 animate-fade">
                         {msg.artifacts.map((a, ai) => (
                           <div key={ai} className="flex items-center gap-2 font-mono text-[9px]">
-                            <span className={actionColors[a.tool] || 'text-hud-text-dim'}>{actionLabels[a.tool] || a.tool}</span>
-                            <span className="text-hud-text-dim">{a.input.path || '—'}</span>
+                            <span className={`glass-tag px-1.5 py-0.5 rounded text-[8px] ${actionColors[a.tool] || 'text-hud-text-dim'}`}>
+                              {actionLabels[a.tool] || a.tool}
+                            </span>
+                            <span className="text-hud-text-dim truncate">{a.input.path || '—'}</span>
                           </div>
                         ))}
                       </div>
@@ -133,13 +140,15 @@ export default function ChatPanel({ messages, onSend, loading, project }) {
         ))}
 
         {loading && (
-          <div className="flex items-center gap-3 animate-fade pl-6">
-            <div className="flex gap-1">
-              {[0, 150, 300].map(d => (
-                <div key={d} className="w-1 h-1 rounded-full bg-hud-green animate-bounce" style={{ animationDelay: `${d}ms` }} />
-              ))}
+          <div className="animate-fade">
+            <div className="glass-message rounded-xl px-4 py-3 inline-flex items-center gap-3">
+              <div className="flex gap-1">
+                {[0, 150, 300].map(d => (
+                  <div key={d} className="w-1.5 h-1.5 rounded-full bg-hud-green animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                ))}
+              </div>
+              <span className="font-mono text-[9px] text-hud-text-dim tracking-wider">PROCESSING REQUEST...</span>
             </div>
-            <span className="font-mono text-[9px] text-hud-text-dim tracking-wider">PROCESSING REQUEST...</span>
           </div>
         )}
         <div ref={messagesEndRef} />
