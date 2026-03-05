@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getProject, getProjectFiles, saveProjectFiles, getChatHistory, saveChatHistory } from '../lib/store';
-import { processToolCall, extractArtifacts } from '../lib/ai-tools';
+import { getProject, getProjectFiles, saveProjectFiles, getChatHistory, saveChatHistory, createSnapshot } from '../lib/store';
+import { processToolCall, extractArtifacts, validateJavaFiles } from '../lib/ai-tools';
 import ChatPanel from './ChatPanel';
 import FileTree from './FileTree';
 import CodeEditor from './CodeEditor';
 import SettingsPanel from './SettingsPanel';
 import Terminal from './Terminal';
 import StatusBar from './StatusBar';
+import VersionHistory from './VersionHistory';
 
 export default function Builder({ projectId }) {
   const router = useRouter();
@@ -19,14 +20,14 @@ export default function Builder({ projectId }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
   const [layout, setLayout] = useState('balanced');
   const [chatWidth, setChatWidth] = useState(380);
   const [isDragging, setIsDragging] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(true);
-  const [terminalHeight, setTerminalHeight] = useState(180);
   const [logs, setLogs] = useState([
     { type: 'system', text: 'Nova AI Mod Creator initialized.' },
-    { type: 'system', text: 'Awaiting commands...' },
+    { type: 'system', text: 'Type a command in chat to begin.' },
   ]);
   const [time, setTime] = useState('');
 
@@ -36,9 +37,7 @@ export default function Builder({ projectId }) {
     setProject(p);
     setFiles(getProjectFiles(projectId));
     setChatMessages(getChatHistory(projectId));
-    const interval = setInterval(() => {
-      setTime(new Date().toLocaleTimeString('en-US', { hour12: false }));
-    }, 1000);
+    const interval = setInterval(() => setTime(new Date().toLocaleTimeString('en-US', { hour12: false })), 1000);
     return () => clearInterval(interval);
   }, [projectId, router]);
 
@@ -64,11 +63,26 @@ export default function Builder({ projectId }) {
     setLogs(prev => [...prev, { type, text, time: new Date().toLocaleTimeString('en-US', { hour12: false }) }]);
   };
 
+  // Run validation
+  const runValidation = (currentFiles) => {
+    const errors = validateJavaFiles(currentFiles);
+    if (errors.length > 0) {
+      addLog('system', `─── VALIDATION: ${errors.length} issue${errors.length !== 1 ? 's' : ''} found ───`);
+      for (const err of errors) {
+        const type = err.severity === 'error' ? 'error' : 'warning';
+        addLog(type, `${err.file}:${err.line} — ${err.message}`);
+      }
+    } else {
+      addLog('success', 'Validation passed. No issues found.');
+    }
+    return errors;
+  };
+
   const sendMessage = async (userMessage) => {
     const newMessages = [...chatMessages, { role: 'user', content: userMessage }];
     setChatMessages(newMessages);
     setLoading(true);
-    addLog('info', `User: ${userMessage.slice(0, 60)}${userMessage.length > 60 ? '...' : ''}`);
+    addLog('info', `> ${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`);
 
     try {
       const res = await fetch('/api/chat', {
@@ -77,33 +91,56 @@ export default function Builder({ projectId }) {
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) })),
           projectFiles: files,
+          projectMeta: project,
         }),
       });
       const data = await res.json();
+
       if (data.error) {
         setChatMessages([...newMessages, { role: 'assistant', content: `⚠ ${data.error}`, isError: true }]);
         addLog('error', data.error);
         setLoading(false);
         return;
       }
+
       const contentBlocks = data.content || [];
       const textParts = [];
       const artifacts = extractArtifacts(contentBlocks);
       let currentFiles = { ...files };
+      let hasChanges = false;
 
       for (const artifact of artifacts) {
         const { files: updatedFiles, result } = processToolCall(artifact.tool, artifact.input, currentFiles);
-        currentFiles = updatedFiles;
-        addLog('success', result.message || `${artifact.tool}: ${artifact.input.path || ''}`);
+        if (result.success) {
+          currentFiles = updatedFiles;
+          if (['create', 'edit', 'delete'].includes(result.action)) hasChanges = true;
+          addLog('success', result.message);
+        } else {
+          addLog('error', result.message);
+        }
       }
+
       for (const block of contentBlocks) {
         if (block.type === 'text') textParts.push(block.text);
       }
+
+      // Create snapshot BEFORE applying changes
+      if (hasChanges) {
+        createSnapshot(projectId, files, `Before: ${userMessage.slice(0, 40)}`);
+      }
+
       setFiles(currentFiles);
+
+      // Run validation after changes
+      if (hasChanges) {
+        setTimeout(() => runValidation(currentFiles), 100);
+      }
+
       const assistantMsg = { role: 'assistant', content: textParts.join('\n\n'), artifacts: artifacts.length > 0 ? artifacts : undefined };
       setChatMessages([...newMessages, assistantMsg]);
       addLog('info', 'Nova responded.');
 
+      // Continue if tool use
       if (artifacts.length > 0 && data.stop_reason === 'tool_use') {
         const toolResults = artifacts.map(a => {
           const { result } = processToolCall(a.tool, a.input, files);
@@ -115,6 +152,7 @@ export default function Builder({ projectId }) {
           body: JSON.stringify({
             messages: [...newMessages, { role: 'assistant', content: contentBlocks }, { role: 'user', content: toolResults }].map(m => ({ role: m.role, content: m.content })),
             projectFiles: currentFiles,
+            projectMeta: project,
           }),
         });
         const continueData = await continueRes.json();
@@ -126,11 +164,25 @@ export default function Builder({ projectId }) {
           }
         }
       }
+
+      // Create snapshot AFTER changes
+      if (hasChanges) {
+        createSnapshot(projectId, currentFiles, userMessage.slice(0, 50));
+      }
+
     } catch (err) {
-      setChatMessages([...newMessages, { role: 'assistant', content: '⚠ Connection failed. Check your API key.', isError: true }]);
+      setChatMessages([...newMessages, { role: 'assistant', content: '⚠ Connection failed.', isError: true }]);
       addLog('error', 'Connection failed: ' + err.message);
     }
     setLoading(false);
+  };
+
+  const handleRollback = (restoredFiles) => {
+    createSnapshot(projectId, files, 'Before rollback');
+    setFiles(restoredFiles);
+    addLog('system', '─── ROLLBACK COMPLETE ───');
+    addLog('success', `Restored ${Object.keys(restoredFiles).length} files.`);
+    runValidation(restoredFiles);
   };
 
   const handleFileSelect = (path) => setActiveFile(path);
@@ -145,7 +197,7 @@ export default function Builder({ projectId }) {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden grid-bg">
-      {/* ══════ TOP BAR ══════ */}
+      {/* TOP BAR */}
       <header className="flex-shrink-0 hud-panel-strong border-b border-[rgba(0,255,106,0.15)] h-11 px-4 flex items-center justify-between relative z-10">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/')} className="text-hud-text-dim hover:text-hud-green transition">
@@ -159,6 +211,9 @@ export default function Builder({ projectId }) {
           <span className="font-mono text-[9px] text-hud-text-dim px-1.5 py-0.5 rounded border border-[rgba(0,255,106,0.1)] bg-[rgba(0,255,106,0.03)]">
             v{project.version}
           </span>
+          <span className="font-mono text-[9px] text-hud-cyan px-1.5 py-0.5 rounded border border-[rgba(0,221,255,0.15)] bg-[rgba(0,221,255,0.05)]">
+            MC {project.mcVersion || '1.20.4'}
+          </span>
           <div className="flex items-center gap-1.5">
             <div className="status-dot" />
             <span className="font-mono text-[9px] text-hud-green">READY</span>
@@ -166,7 +221,6 @@ export default function Builder({ projectId }) {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Layout toggles */}
           {['ai-focus', 'balanced', 'code-focus'].map(l => (
             <button
               key={l}
@@ -184,6 +238,20 @@ export default function Builder({ projectId }) {
           <button onClick={() => setTerminalOpen(!terminalOpen)} className={`px-2 py-1 rounded text-[9px] font-display tracking-wider transition-all border ${terminalOpen ? 'bg-[rgba(0,255,106,0.08)] border-[rgba(0,255,106,0.25)] text-hud-green' : 'border-transparent text-hud-text-dim'}`}>
             TERM
           </button>
+          <button
+            onClick={() => runValidation(files)}
+            className="px-2 py-1 rounded text-[9px] font-display tracking-wider border border-transparent text-hud-amber hover:border-[rgba(255,170,0,0.25)] hover:bg-[rgba(255,170,0,0.05)] transition"
+            title="Run validation"
+          >
+            CHECK
+          </button>
+          <button
+            onClick={() => setShowVersions(true)}
+            className="px-2 py-1 rounded text-[9px] font-display tracking-wider border border-transparent text-hud-cyan hover:border-[rgba(0,221,255,0.25)] hover:bg-[rgba(0,221,255,0.05)] transition"
+            title="Version history"
+          >
+            HISTORY
+          </button>
           <button onClick={() => setShowSettings(true)} className="text-hud-text-dim hover:text-hud-green transition p-1">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
@@ -192,9 +260,8 @@ export default function Builder({ projectId }) {
         </div>
       </header>
 
-      {/* ══════ WORKSPACE ══════ */}
+      {/* WORKSPACE */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Chat Panel */}
         <div
           className="flex-shrink-0 border-r border-[rgba(0,255,106,0.1)]"
           style={{
@@ -206,40 +273,34 @@ export default function Builder({ projectId }) {
           <ChatPanel messages={chatMessages} onSend={sendMessage} loading={loading} project={project} />
         </div>
 
-        {/* Drag handle */}
         {layout === 'balanced' && (
           <div onMouseDown={handleMouseDown} className="w-1 cursor-col-resize hover:bg-[rgba(0,255,106,0.2)] active:bg-[rgba(0,255,106,0.4)] transition-colors flex-shrink-0 relative">
             <div className="absolute inset-y-0 -left-1 -right-1" />
           </div>
         )}
 
-        {/* Right side: Files + Editor + Terminal */}
         <div className="flex-1 flex flex-col overflow-hidden" style={{ display: layout === 'ai-focus' ? 'none' : undefined }}>
-          {/* Files + Editor row */}
           <div className="flex-1 flex overflow-hidden">
-            {/* File tree */}
             <div className="w-52 flex-shrink-0 border-r border-[rgba(0,255,106,0.1)] overflow-auto">
               <FileTree files={files} activeFile={activeFile} onSelect={handleFileSelect} onCreate={handleFileCreate} onDelete={handleFileDelete} />
             </div>
-            {/* Editor */}
             <div className="flex-1 overflow-hidden">
               <CodeEditor files={files} activeFile={activeFile} onUpdate={handleFileUpdate} />
             </div>
           </div>
 
-          {/* Terminal */}
           {terminalOpen && (
-            <div className="flex-shrink-0 border-t border-[rgba(0,255,106,0.15)]" style={{ height: terminalHeight }}>
+            <div className="flex-shrink-0 border-t border-[rgba(0,255,106,0.15)]" style={{ height: 180 }}>
               <Terminal logs={logs} />
             </div>
           )}
         </div>
       </div>
 
-      {/* ══════ BOTTOM STATUS BAR ══════ */}
       <StatusBar project={project} fileCount={fileCount} lineCount={lineCount} time={time} activeFile={activeFile} loading={loading} />
 
       {showSettings && <SettingsPanel project={project} files={files} onClose={() => setShowSettings(false)} />}
+      {showVersions && <VersionHistory projectId={projectId} onRollback={handleRollback} onClose={() => setShowVersions(false)} />}
     </div>
   );
 }
