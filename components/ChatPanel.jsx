@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 
-export default function ChatPanel({ messages, onSend, loading, project }) {
+export default function ChatPanel({ messages, onSend, loading, project, onUpload }) {
   const [input, setInput] = useState('');
   const [webEnabled, setWebEnabled] = useState(false);
   const messagesEndRef = useRef(null);
@@ -157,7 +157,7 @@ export default function ChatPanel({ messages, onSend, loading, project }) {
       {/* Input */}
       <div className="flex-shrink-0 border-t border-[rgba(0,255,106,0.1)] p-3 hud-panel">
         <div className="flex items-end gap-2 relative z-10">
-          <button className="flex-shrink-0 w-8 h-8 rounded hud-btn flex items-center justify-center" title="Upload">
+          <button onClick={onUpload} className="flex-shrink-0 w-8 h-8 rounded hud-btn flex items-center justify-center" title="Import files">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
           </button>
           <div className="flex-1">
