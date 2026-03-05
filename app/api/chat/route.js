@@ -51,30 +51,48 @@ export async function POST(request) {
       parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
     }));
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: SYSTEM_PROMPT + contextMessage }],
-          },
-          contents: geminiMessages,
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 8192,
-            responseMimeType: 'application/json',
-          },
-        }),
+    // Ensure conversation starts with a user message
+    if (geminiMessages.length > 0 && geminiMessages[0].role !== 'user') {
+      geminiMessages.unshift({ role: 'user', parts: [{ text: 'Hello' }] });
+    }
+
+    // Ensure alternating roles (Gemini requires this)
+    const cleanedMessages = [];
+    for (let i = 0; i < geminiMessages.length; i++) {
+      const msg = geminiMessages[i];
+      if (i > 0 && cleanedMessages[cleanedMessages.length - 1].role === msg.role) {
+        cleanedMessages[cleanedMessages.length - 1].parts[0].text += '\n' + msg.parts[0].text;
+      } else {
+        cleanedMessages.push(msg);
       }
-    );
+    }
+
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: SYSTEM_PROMPT + contextMessage }],
+        },
+        contents: cleanedMessages,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', errorText);
+      console.error('Gemini API error:', response.status, errorText);
       return NextResponse.json(
-        { error: 'AI request failed. Check your Gemini API key and try again.' },
+        { error: 'AI request failed (' + response.status + '). Check your Gemini API key.' },
         { status: response.status }
       );
     }
@@ -83,28 +101,25 @@ export async function POST(request) {
 
     // Extract text from Gemini response
     const rawText =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || '{"message":"Sorry, I could not generate a response.","actions":[]}';
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      '{"message":"Sorry, I could not generate a response.","actions":[]}';
 
     // Parse the JSON response
     let parsed;
     try {
-      // Clean up potential markdown code blocks
       const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       parsed = JSON.parse(cleaned);
     } catch {
-      // If JSON parsing fails, treat as plain text
       parsed = { message: rawText, actions: [] };
     }
 
     // Convert to the format the frontend expects
     const content = [];
 
-    // Add text block
     if (parsed.message) {
       content.push({ type: 'text', text: parsed.message });
     }
 
-    // Add tool use blocks for each action
     if (parsed.actions && Array.isArray(parsed.actions)) {
       for (const action of parsed.actions) {
         content.push({
@@ -121,6 +136,10 @@ export async function POST(request) {
       }
     }
 
+    if (content.length === 0) {
+      content.push({ type: 'text', text: 'I received your message but could not generate a response. Please try again.' });
+    }
+
     return NextResponse.json({
       content,
       stop_reason: 'end_turn',
@@ -128,7 +147,7 @@ export async function POST(request) {
   } catch (err) {
     console.error('Chat API error:', err);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error: ' + err.message },
       { status: 500 }
     );
   }
