@@ -12,6 +12,7 @@ import Terminal from './Terminal';
 import StatusBar from './StatusBar';
 import VersionHistory from './VersionHistory';
 import UploadModal from './UploadModal';
+import ExportPanel from './ExportPanel';
 
 export default function Builder({ projectId }) {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function Builder({ projectId }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [layout, setLayout] = useState('balanced');
   const [chatWidth, setChatWidth] = useState(380);
   const [isDragging, setIsDragging] = useState(false);
@@ -194,8 +196,30 @@ export default function Builder({ projectId }) {
     addLog('system', `─── ${importData.mode.toUpperCase()} ───`);
     addLog('success', `Imported ${Object.keys(importData.files).length} files.`);
 
-    if (importData.mode === 'upgrade') {
-      const msg = `I just imported a plugin built for Minecraft ${importData.upgradeFrom || 'an older version'}. Please upgrade ALL code to MC ${importData.upgradeTo}. Fix all deprecated APIs, update imports, update build.gradle, update plugin.yml api-version, fix Material enum changes, and fix any event changes. Show me exactly what you changed.`;
+    if (importData.jarSummary) {
+      // JAR decompile — ask AI to regenerate source from class structure
+      const s = importData.jarSummary;
+      const classNames = s.classes.map(c => c.className).join(', ');
+      const cmds = s.commands.length > 0 ? `Commands: ${s.commands.join(', ')}. ` : '';
+      const deps = s.dependencies.length > 0 ? `Dependencies: ${s.dependencies.join(', ')}. ` : '';
+
+      let msg = `I just imported a JAR file: "${s.name}" (v${s.version || '?'}, MC API ${s.apiVersion || '?'}). `;
+      msg += `Main class: ${s.mainClass || '?'}. Package: ${s.packageName || '?'}. `;
+      msg += `${cmds}${deps}`;
+      msg += `It has ${s.classCount} classes: ${classNames.slice(0, 500)}. `;
+      msg += `I've already extracted the resources (plugin.yml, config.yml, etc). `;
+
+      if (importData.mode === 'upgrade') {
+        msg += `Please regenerate ALL Java source files for these classes, upgraded to MC ${importData.upgradeTo}. Use modern APIs, fix all deprecations. Create every .java file in the correct package path.`;
+      } else if (importData.mode === 'debug') {
+        msg += `Please regenerate ALL Java source files for these classes. Analyze the plugin.yml and config for what each class should do. Fix any issues you find.`;
+      } else {
+        msg += `Please regenerate ALL Java source files for these classes based on the plugin.yml, config, and class names. Create production-quality code.`;
+      }
+
+      setTimeout(() => sendMessage(msg), 500);
+    } else if (importData.mode === 'upgrade') {
+      const msg = `I just imported a plugin built for Minecraft ${importData.upgradeFrom || 'an older version'}. Please upgrade ALL code to MC ${importData.upgradeTo}. Fix all deprecated APIs, update imports, update build.gradle, update plugin.yml api-version, fix Material enum changes, and fix any event changes.`;
       setTimeout(() => sendMessage(msg), 500);
     } else if (importData.mode === 'debug') {
       const msg = `I just imported a broken plugin. Please scan ALL files, identify every error, missing import, broken dependency, invalid config, and common plugin loading failure. Fix everything automatically and explain what was wrong.`;
@@ -279,6 +303,13 @@ export default function Builder({ projectId }) {
           >
             IMPORT
           </button>
+          <button
+            onClick={() => setShowExport(true)}
+            className="px-2 py-1 rounded text-[9px] font-display tracking-wider border border-transparent text-hud-green hover:border-[rgba(0,255,106,0.25)] hover:bg-[rgba(0,255,106,0.05)] transition"
+            title="Download project ZIP"
+          >
+            EXPORT
+          </button>
           <button onClick={() => setShowSettings(true)} className="text-hud-text-dim hover:text-hud-green transition p-1">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
@@ -329,6 +360,7 @@ export default function Builder({ projectId }) {
       {showSettings && <SettingsPanel project={project} files={files} onClose={() => setShowSettings(false)} />}
       {showVersions && <VersionHistory projectId={projectId} onRollback={handleRollback} onClose={() => setShowVersions(false)} />}
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} onImport={handleImport} />}
+      {showExport && <ExportPanel project={project} files={files} onClose={() => setShowExport(false)} />}
     </div>
   );
 }
