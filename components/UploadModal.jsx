@@ -1,19 +1,22 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { importJar, buildProjectFromJar } from '../lib/jar-handler';
 
 export default function UploadModal({ onClose, onImport }) {
   const [dragOver, setDragOver] = useState(false);
   const [files, setFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
+  const [jarData, setJarData] = useState(null);
   const [upgradeFrom, setUpgradeFrom] = useState(null);
   const [upgradeTo, setUpgradeTo] = useState('1.20.4');
-  const [mode, setMode] = useState('import'); // 'import', 'debug', 'upgrade'
+  const [mode, setMode] = useState('import');
+  const [status, setStatus] = useState('');
   const inputRef = useRef(null);
 
   const MC_TARGETS = ['1.21.4', '1.21.1', '1.20.6', '1.20.4', '1.20.1', '1.19.4'];
 
-  const readFile = (file) => {
+  const readTextFile = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve({ name: file.name, path: file.webkitRelativePath || file.name, content: e.target.result, size: file.size });
@@ -24,28 +27,50 @@ export default function UploadModal({ onClose, onImport }) {
 
   const detectVersion = (fileContents) => {
     for (const f of fileContents) {
-      // Check plugin.yml for api-version
       if (f.name === 'plugin.yml' || f.path.endsWith('plugin.yml')) {
         const match = f.content.match(/api-version:\s*['"]?(\d+\.\d+)/);
         if (match) return match[1];
       }
-      // Check build.gradle for spigot version
       if (f.name === 'build.gradle' || f.path.endsWith('build.gradle')) {
         const match = f.content.match(/spigot-api:(\d+\.\d+\.\d+)/);
         if (match) return match[1];
       }
-      // Check for old imports
-      if (f.content.includes('org.bukkit.craftbukkit.v1_16')) return '1.16';
-      if (f.content.includes('org.bukkit.craftbukkit.v1_17')) return '1.17';
-      if (f.content.includes('org.bukkit.craftbukkit.v1_18')) return '1.18';
-      if (f.content.includes('org.bukkit.craftbukkit.v1_19')) return '1.19';
     }
     return null;
   };
 
+  const handleJar = async (file) => {
+    setProcessing(true);
+    setStatus('Extracting JAR contents...');
+    try {
+      const data = await importJar(file);
+      setJarData(data);
+      setStatus(`Found ${data.classes.length} classes, ${Object.keys(data.resources).length} resources`);
+
+      if (data.apiVersion) {
+        setUpgradeFrom(data.apiVersion);
+        setMode('upgrade');
+      } else {
+        setMode('debug');
+      }
+    } catch (err) {
+      setStatus('Failed to read JAR: ' + err.message);
+    }
+    setProcessing(false);
+  };
+
   const handleFiles = async (fileList) => {
-    const validExts = ['.java', '.yml', '.yaml', '.json', '.gradle', '.toml', '.xml', '.properties', '.mcfunction', '.mcmeta', '.txt', '.md', '.cfg'];
-    const validFiles = Array.from(fileList).filter(f => {
+    const allFiles = Array.from(fileList);
+
+    // Check for JAR files first
+    const jarFile = allFiles.find(f => f.name.endsWith('.jar'));
+    if (jarFile) {
+      await handleJar(jarFile);
+      return;
+    }
+
+    const validExts = ['.java', '.yml', '.yaml', '.json', '.gradle', '.toml', '.xml', '.properties', '.mcfunction', '.mcmeta', '.txt', '.md'];
+    const validFiles = allFiles.filter(f => {
       const ext = '.' + f.name.split('.').pop().toLowerCase();
       return validExts.includes(ext) && f.size < 512 * 1024;
     });
@@ -53,18 +78,15 @@ export default function UploadModal({ onClose, onImport }) {
     if (validFiles.length === 0) return;
 
     setProcessing(true);
+    setStatus('Reading files...');
     try {
-      const contents = await Promise.all(validFiles.map(readFile));
+      const contents = await Promise.all(validFiles.map(readTextFile));
       setFiles(contents);
-
-      // Auto-detect version
       const detected = detectVersion(contents);
-      if (detected) {
-        setUpgradeFrom(detected);
-        setMode('upgrade');
-      }
+      if (detected) { setUpgradeFrom(detected); setMode('upgrade'); }
+      setStatus(`${contents.length} files loaded`);
     } catch (err) {
-      console.error('File read error:', err);
+      setStatus('Error: ' + err.message);
     }
     setProcessing(false);
   };
@@ -75,29 +97,30 @@ export default function UploadModal({ onClose, onImport }) {
     handleFiles(e.dataTransfer.files);
   }, []);
 
-  const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
-  const handleDragLeave = () => setDragOver(false);
-
   const handleImport = () => {
+    if (jarData) {
+      // JAR import path
+      const { files: projectFiles, summary } = buildProjectFromJar(jarData);
+      onImport({
+        files: projectFiles,
+        mode,
+        upgradeFrom: jarData.apiVersion,
+        upgradeTo: mode === 'upgrade' ? upgradeTo : null,
+        jarSummary: summary,
+      });
+      onClose();
+      return;
+    }
+
     if (files.length === 0) return;
 
-    // Build file map
     const fileMap = {};
     for (const f of files) {
-      // Clean up paths — remove leading folder if it's a project root
       let path = f.path || f.name;
-      // Remove common root prefixes
-      path = path.replace(/^(src\/|main\/)?/, '');
-      // If it has a relative path with folders, use it; otherwise just use name
       if (!path.includes('/')) {
-        // Try to guess correct path based on file type
-        if (f.name.endsWith('.java')) {
-          path = `src/main/java/${f.name}`;
-        } else if (f.name === 'plugin.yml' || f.name === 'config.yml') {
-          path = `src/main/resources/${f.name}`;
-        } else if (f.name === 'build.gradle' || f.name === 'settings.gradle') {
-          path = f.name;
-        }
+        if (f.name.endsWith('.java')) path = `src/main/java/${f.name}`;
+        else if (f.name === 'plugin.yml' || f.name === 'config.yml') path = `src/main/resources/${f.name}`;
+        else path = f.name;
       }
       fileMap[path] = f.content;
     }
@@ -112,6 +135,7 @@ export default function UploadModal({ onClose, onImport }) {
   };
 
   const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  const hasContent = files.length > 0 || jarData;
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade">
@@ -129,13 +153,13 @@ export default function UploadModal({ onClose, onImport }) {
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
           {/* Mode selector */}
           <div className="grid grid-cols-3 gap-2">
             {[
-              { key: 'import', label: 'IMPORT', desc: 'Add files to project', icon: '📥' },
-              { key: 'debug', label: 'DEBUG', desc: 'Fix broken plugin', icon: '🔧' },
-              { key: 'upgrade', label: 'UPGRADE', desc: 'Update MC version', icon: '⬆️' },
+              { key: 'import', label: 'IMPORT', desc: 'Add files', icon: '📥' },
+              { key: 'debug', label: 'DEBUG', desc: 'Fix errors', icon: '🔧' },
+              { key: 'upgrade', label: 'UPGRADE', desc: 'Update version', icon: '⬆️' },
             ].map(m => (
               <button
                 key={m.key}
@@ -156,8 +180,8 @@ export default function UploadModal({ onClose, onImport }) {
           {/* Drop zone */}
           <div
             onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
             onClick={() => inputRef.current?.click()}
             className={`rounded-lg p-8 text-center cursor-pointer transition-all border-2 border-dashed ${
               dragOver
@@ -169,58 +193,109 @@ export default function UploadModal({ onClose, onImport }) {
               ref={inputRef}
               type="file"
               multiple
-              accept=".java,.yml,.yaml,.json,.gradle,.toml,.xml,.properties,.mcfunction,.mcmeta,.txt,.md"
+              accept=".java,.yml,.yaml,.json,.gradle,.toml,.xml,.properties,.jar,.mcfunction,.mcmeta,.txt,.md"
               onChange={(e) => handleFiles(e.target.files)}
               className="hidden"
             />
             {processing ? (
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-hud-green animate-bounce" />
-                <span className="font-mono text-[10px] text-hud-green tracking-wider">SCANNING FILES...</span>
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex gap-1">
+                  {[0, 150, 300].map(d => (
+                    <div key={d} className="w-1.5 h-1.5 rounded-full bg-hud-green animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  ))}
+                </div>
+                <span className="font-mono text-[10px] text-hud-green tracking-wider">{status}</span>
               </div>
-            ) : files.length === 0 ? (
+            ) : !hasContent ? (
               <>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-hud-green opacity-40 mx-auto mb-3">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
                 </svg>
-                <p className="font-display text-xs text-hud-text-dim tracking-wider mb-1">DROP FILES HERE</p>
+                <p className="font-display text-xs text-hud-text-dim tracking-wider mb-1">DROP FILES OR JAR HERE</p>
                 <p className="font-mono text-[8px] text-hud-text-dim opacity-60">
-                  .java, .yml, .json, .gradle, .toml — max 512KB each
+                  .jar (decompile) • .java, .yml, .json, .gradle — max 512KB each
                 </p>
               </>
+            ) : jarData ? (
+              <div className="space-y-2 text-left">
+                <div className="flex items-center gap-2 justify-center">
+                  <span className="text-xl">📦</span>
+                  <span className="font-display text-sm text-hud-green text-glow">{jarData.pluginName || 'Unknown Plugin'}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {[
+                    ['Classes', jarData.classes.length],
+                    ['Resources', Object.keys(jarData.resources).length],
+                    ['Commands', jarData.commands.length],
+                    ['Version', jarData.version || '?'],
+                  ].map(([k, v]) => (
+                    <div key={k} className="glass-tag rounded px-2 py-1.5 text-center">
+                      <div className="font-display text-sm text-hud-green">{v}</div>
+                      <div className="font-mono text-[7px] text-hud-text-dim tracking-wider">{k}</div>
+                    </div>
+                  ))}
+                </div>
+                {jarData.mainClass && (
+                  <div className="font-mono text-[8px] text-hud-text-dim text-center mt-2">
+                    Main: {jarData.mainClass}
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center justify-center gap-2">
                   <span className="font-display text-sm text-hud-green text-glow">{files.length}</span>
                   <span className="font-mono text-[10px] text-hud-text-dim tracking-wider">
-                    FILE{files.length !== 1 ? 'S' : ''} LOADED ({(totalSize / 1024).toFixed(1)}KB)
+                    FILE{files.length !== 1 ? 'S' : ''} ({(totalSize / 1024).toFixed(1)}KB)
                   </span>
                 </div>
-                <div className="max-h-24 overflow-y-auto space-y-0.5">
+                <div className="max-h-20 overflow-y-auto space-y-0.5">
                   {files.map((f, i) => (
                     <div key={i} className="font-mono text-[8px] text-hud-text-dim">{f.path || f.name}</div>
                   ))}
                 </div>
-                <p className="font-mono text-[8px] text-hud-green opacity-60">Click to add more files</p>
               </div>
             )}
           </div>
 
-          {/* Version upgrade panel */}
-          {mode === 'upgrade' && (
+          {/* JAR decompile info */}
+          {jarData && (
+            <div className="glass-card rounded-lg p-4 animate-slide-up">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm">🔍</span>
+                <span className="font-display text-[11px] text-hud-cyan tracking-[0.2em]">JAR ANALYSIS</span>
+              </div>
+              <p className="font-mono text-[9px] text-hud-text-dim leading-relaxed mb-3">
+                Resources extracted. Nova AI will regenerate Java source code from the class structure and plugin metadata. This creates editable source you can modify and rebuild.
+              </p>
+              {jarData.classes.length > 0 && (
+                <div className="max-h-24 overflow-y-auto space-y-0.5">
+                  <p className="font-mono text-[8px] text-hud-text-dim tracking-wider mb-1">DETECTED CLASSES:</p>
+                  {jarData.classes.slice(0, 20).map((c, i) => (
+                    <div key={i} className="font-mono text-[8px] text-hud-text-dim opacity-60">
+                      {c.className}
+                    </div>
+                  ))}
+                  {jarData.classes.length > 20 && (
+                    <div className="font-mono text-[8px] text-hud-green">+{jarData.classes.length - 20} more</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Upgrade panel */}
+          {mode === 'upgrade' && (upgradeFrom || jarData?.apiVersion) && (
             <div className="glass-card rounded-lg p-4 space-y-3 animate-slide-up">
               <div className="flex items-center gap-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-hud-amber">
-                  <path d="M12 2v20M2 12l10-10 10 10" />
-                </svg>
+                <span className="text-sm">⬆️</span>
                 <span className="font-display text-[11px] text-hud-amber tracking-[0.2em]">VERSION UPGRADE</span>
               </div>
-
               <div className="flex items-center gap-3">
                 <div className="flex-1 text-center">
                   <div className="font-mono text-[8px] text-hud-text-dim tracking-wider mb-1">FROM</div>
                   <div className="glass-tag px-3 py-2 rounded font-mono text-sm text-hud-red">
-                    {upgradeFrom || 'Unknown'}
+                    {upgradeFrom || jarData?.apiVersion || '?'}
                   </div>
                 </div>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-hud-green flex-shrink-0">
@@ -233,28 +308,22 @@ export default function UploadModal({ onClose, onImport }) {
                     onChange={(e) => setUpgradeTo(e.target.value)}
                     className="w-full hud-input px-3 py-2 rounded font-mono text-sm text-hud-green text-center appearance-none cursor-pointer"
                   >
-                    {MC_TARGETS.map(v => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
+                    {MC_TARGETS.map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
-              </div>
-
-              <div className="font-mono text-[8px] text-hud-text-dim leading-relaxed">
-                Nova will automatically fix deprecated APIs, update imports, adjust config files, and ensure compatibility with the target version.
               </div>
             </div>
           )}
 
-          {/* Debug mode info */}
-          {mode === 'debug' && files.length > 0 && (
+          {/* Debug panel */}
+          {mode === 'debug' && hasContent && (
             <div className="glass-card rounded-lg p-4 animate-slide-up">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🔧</span>
+                <span className="text-sm">🔧</span>
                 <span className="font-display text-[11px] text-hud-cyan tracking-[0.2em]">DEBUG MODE</span>
               </div>
               <p className="font-mono text-[9px] text-hud-text-dim leading-relaxed">
-                Nova will scan all files, check for missing imports, broken dependencies, invalid configs, and common plugin errors. Fixes will be applied automatically.
+                Nova will scan all files for missing imports, broken dependencies, invalid configs, and common plugin errors. Fixes applied automatically.
               </p>
             </div>
           )}
@@ -263,16 +332,16 @@ export default function UploadModal({ onClose, onImport }) {
         {/* Footer */}
         <div className="px-6 py-4 border-t border-[rgba(0,255,106,0.1)] flex items-center justify-between">
           <span className="font-mono text-[8px] text-hud-text-dim tracking-wider">
-            {files.length > 0 ? `${files.length} FILES READY` : 'AWAITING FILES...'}
+            {jarData ? `JAR: ${jarData.pluginName || 'plugin'}` : files.length > 0 ? `${files.length} FILES` : 'AWAITING INPUT...'}
           </span>
           <div className="flex gap-3">
             <button onClick={onClose} className="hud-btn px-4 py-2 rounded text-xs tracking-wider">CANCEL</button>
             <button
               onClick={handleImport}
-              disabled={files.length === 0}
+              disabled={!hasContent}
               className="hud-btn-primary px-5 py-2 rounded font-display text-xs tracking-wider font-bold disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {mode === 'debug' ? 'SCAN & FIX' : mode === 'upgrade' ? 'UPGRADE' : 'IMPORT'}
+              {jarData ? 'DECOMPILE & IMPORT' : mode === 'debug' ? 'SCAN & FIX' : mode === 'upgrade' ? 'UPGRADE' : 'IMPORT'}
             </button>
           </div>
         </div>
