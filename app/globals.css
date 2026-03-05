@@ -32,6 +32,9 @@ html, body, #__next {
 
 body {
   background: var(--hud-bg);
+  background-image:
+    radial-gradient(ellipse at 30% 0%, rgba(0,255,106,0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 100%, rgba(0,255,106,0.02) 0%, transparent 50%);
   color: var(--hud-text);
   font-family: 'Rajdhani', sans-serif;
   overflow: hidden;
@@ -56,8 +59,8 @@ body {
     0deg,
     transparent,
     transparent 2px,
-    rgba(0, 255, 106, 0.015) 2px,
-    rgba(0, 255, 106, 0.015) 4px
+    rgba(0, 255, 106, 0.012) 2px,
+    rgba(0, 255, 106, 0.012) 4px
   );
   pointer-events: none;
   z-index: 9999;
@@ -75,95 +78,164 @@ body {
 }
 
 /* ═══════════════════════════════════════════
-   HUD GLASS PANELS
+   GLASS PANELS — THE CORE SYSTEM
    ═══════════════════════════════════════════ */
-.hud-panel {
-  background: linear-gradient(135deg, rgba(0,255,106,0.04) 0%, rgba(0,20,8,0.8) 100%);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0,255,106,0.12);
-  position: relative;
+
+/* Base glass — subtle, for small elements */
+.glass {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 106, 0.04) 0%,
+    rgba(0, 30, 12, 0.6) 50%,
+    rgba(0, 255, 106, 0.02) 100%
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 255, 106, 0.1);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(0, 255, 106, 0.06);
 }
 
+/* HUD panel — primary panels */
+.hud-panel {
+  background: linear-gradient(
+    160deg,
+    rgba(0, 255, 106, 0.05) 0%,
+    rgba(0, 18, 8, 0.75) 40%,
+    rgba(0, 10, 4, 0.85) 100%
+  );
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid rgba(0, 255, 106, 0.12);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 255, 106, 0.03),
+    inset 0 1px 0 rgba(0, 255, 106, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+  position: relative;
+}
 .hud-panel::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0,255,106,0.06) 0%, transparent 40%);
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(0,255,106,0.06) 0%, transparent 35%);
   pointer-events: none;
 }
 
+/* Strong panel — headers, modals */
 .hud-panel-strong {
-  background: linear-gradient(135deg, rgba(0,255,106,0.06) 0%, rgba(0,15,6,0.9) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0,255,106,0.18);
+  background: linear-gradient(
+    160deg,
+    rgba(0, 255, 106, 0.07) 0%,
+    rgba(0, 14, 6, 0.88) 30%,
+    rgba(0, 8, 3, 0.94) 100%
+  );
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(0, 255, 106, 0.16);
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.6),
+    0 0 1px rgba(0, 255, 106, 0.2),
+    inset 0 1px 0 rgba(0, 255, 106, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4);
   position: relative;
 }
-
 .hud-panel-strong::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0,255,106,0.08) 0%, transparent 30%);
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(0,255,106,0.08) 0%, transparent 25%);
   pointer-events: none;
+}
+
+/* Card glass — for project cards, settings items, chat bubbles */
+.glass-card {
+  background: linear-gradient(
+    145deg,
+    rgba(0, 255, 106, 0.04) 0%,
+    rgba(0, 20, 8, 0.7) 100%
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 255, 106, 0.1);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(0, 255, 106, 0.06),
+    inset 0 0 20px rgba(0, 255, 106, 0.01);
+  transition: all 0.3s ease;
+}
+.glass-card:hover {
+  border-color: rgba(0, 255, 106, 0.22);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(0, 255, 106, 0.06),
+    inset 0 1px 0 rgba(0, 255, 106, 0.1),
+    inset 0 0 30px rgba(0, 255, 106, 0.02);
+}
+
+/* Chat message glass — lighter, subtler */
+.glass-message {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 106, 0.03) 0%,
+    rgba(0, 18, 8, 0.5) 100%
+  );
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 255, 106, 0.08);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(0, 255, 106, 0.04);
+}
+
+/* User message glass — slightly different tint */
+.glass-user {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 106, 0.06) 0%,
+    rgba(0, 30, 14, 0.55) 100%
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 255, 106, 0.15);
+  box-shadow:
+    0 2px 16px rgba(0, 255, 106, 0.05),
+    inset 0 1px 0 rgba(0, 255, 106, 0.08);
+}
+
+/* Inline glass — for tags, badges, small highlights */
+.glass-tag {
+  background: rgba(0, 255, 106, 0.06);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(0, 255, 106, 0.12);
+  box-shadow: inset 0 1px 0 rgba(0, 255, 106, 0.06);
 }
 
 /* ═══════════════════════════════════════════
    HUD CORNER BRACKETS
    ═══════════════════════════════════════════ */
-.hud-corners {
-  position: relative;
+.hud-corners { position: relative; }
+.hud-corners::before, .hud-corners::after {
+  content: ''; position: absolute; width: 14px; height: 14px; border-color: var(--hud-green); pointer-events: none; z-index: 2; opacity: 0.7;
 }
-.hud-corners::before,
-.hud-corners::after {
-  content: '';
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-color: var(--hud-green);
-  pointer-events: none;
-  z-index: 2;
+.hud-corners::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+.hud-corners::after { top: -1px; right: -1px; border-top: 2px solid; border-right: 2px solid; }
+.hud-corners-bottom { position: relative; }
+.hud-corners-bottom::before, .hud-corners-bottom::after {
+  content: ''; position: absolute; width: 14px; height: 14px; border-color: var(--hud-green); pointer-events: none; z-index: 2; opacity: 0.7;
 }
-.hud-corners::before {
-  top: -1px; left: -1px;
-  border-top: 2px solid;
-  border-left: 2px solid;
-}
-.hud-corners::after {
-  top: -1px; right: -1px;
-  border-top: 2px solid;
-  border-right: 2px solid;
-}
-.hud-corners-bottom {
-  position: relative;
-}
-.hud-corners-bottom::before,
-.hud-corners-bottom::after {
-  content: '';
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-color: var(--hud-green);
-  pointer-events: none;
-  z-index: 2;
-}
-.hud-corners-bottom::before {
-  bottom: -1px; left: -1px;
-  border-bottom: 2px solid;
-  border-left: 2px solid;
-}
-.hud-corners-bottom::after {
-  bottom: -1px; right: -1px;
-  border-bottom: 2px solid;
-  border-right: 2px solid;
-}
+.hud-corners-bottom::before { bottom: -1px; left: -1px; border-bottom: 2px solid; border-left: 2px solid; }
+.hud-corners-bottom::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
 
 /* ═══════════════════════════════════════════
    GLOW EFFECTS
    ═══════════════════════════════════════════ */
 .glow {
-  box-shadow: 0 0 15px rgba(0,255,106,0.1), inset 0 0 15px rgba(0,255,106,0.03);
+  box-shadow: 0 0 15px rgba(0,255,106,0.1), 0 0 30px rgba(0,255,106,0.04), inset 0 0 15px rgba(0,255,106,0.03);
 }
 .glow-strong {
   box-shadow: 0 0 30px rgba(0,255,106,0.2), 0 0 60px rgba(0,255,106,0.05), inset 0 0 20px rgba(0,255,106,0.05);
@@ -171,56 +243,32 @@ body {
 .glow-active {
   box-shadow: 0 0 20px rgba(0,255,106,0.35), 0 0 40px rgba(0,255,106,0.1);
 }
-.text-glow {
-  text-shadow: 0 0 8px rgba(0,255,106,0.6), 0 0 20px rgba(0,255,106,0.3);
-}
-.text-glow-subtle {
-  text-shadow: 0 0 6px rgba(0,255,106,0.3);
-}
+.text-glow { text-shadow: 0 0 8px rgba(0,255,106,0.6), 0 0 20px rgba(0,255,106,0.3); }
+.text-glow-subtle { text-shadow: 0 0 6px rgba(0,255,106,0.3); }
 
 /* ═══════════════════════════════════════════
    HEXAGON
    ═══════════════════════════════════════════ */
-.hexagon {
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-}
+.hexagon { clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); }
 
 /* ═══════════════════════════════════════════
-   BEVELED / ANGLED PANELS
+   BEVELED PANELS
    ═══════════════════════════════════════════ */
-.bevel-tl {
-  clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 16px);
-}
-.bevel-tr {
-  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
-}
-.bevel-both {
-  clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px);
-}
+.bevel-tl { clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 16px); }
+.bevel-tr { clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%); }
 
 /* ═══════════════════════════════════════════
    STATUS INDICATORS
    ═══════════════════════════════════════════ */
 .status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+  width: 6px; height: 6px; border-radius: 50%;
   background: var(--hud-green);
   box-shadow: 0 0 6px var(--hud-green), 0 0 12px var(--hud-green);
   animation: status-pulse 2s ease-in-out infinite;
 }
-.status-dot-amber {
-  background: var(--hud-amber);
-  box-shadow: 0 0 6px var(--hud-amber), 0 0 12px var(--hud-amber);
-}
-.status-dot-red {
-  background: var(--hud-red);
-  box-shadow: 0 0 6px var(--hud-red), 0 0 12px var(--hud-red);
-}
-.status-dot-cyan {
-  background: var(--hud-cyan);
-  box-shadow: 0 0 6px var(--hud-cyan), 0 0 12px var(--hud-cyan);
-}
+.status-dot-amber { background: var(--hud-amber); box-shadow: 0 0 6px var(--hud-amber), 0 0 12px var(--hud-amber); }
+.status-dot-red { background: var(--hud-red); box-shadow: 0 0 6px var(--hud-red), 0 0 12px var(--hud-red); }
+.status-dot-cyan { background: var(--hud-cyan); box-shadow: 0 0 6px var(--hud-cyan), 0 0 12px var(--hud-cyan); }
 
 @keyframes status-pulse {
   0%, 100% { opacity: 1; }
@@ -230,27 +278,16 @@ body {
 /* ═══════════════════════════════════════════
    SCANNING LINE
    ═══════════════════════════════════════════ */
-.scan-line {
-  position: relative;
-  overflow: hidden;
-}
+.scan-line { position: relative; overflow: hidden; }
 .scan-line::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
+  content: ''; position: absolute; left: 0; right: 0; height: 1px;
   background: linear-gradient(90deg, transparent, var(--hud-green), transparent);
-  opacity: 0.4;
-  animation: scan 4s linear infinite;
+  opacity: 0.3; animation: scan 4s linear infinite;
 }
-@keyframes scan {
-  0% { top: 0; }
-  100% { top: 100%; }
-}
+@keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
 
 /* ═══════════════════════════════════════════
-   HUD BUTTON
+   HUD BUTTONS
    ═══════════════════════════════════════════ */
 .hud-btn {
   background: linear-gradient(135deg, rgba(0,255,106,0.08), rgba(0,255,106,0.02));
@@ -261,25 +298,21 @@ body {
   letter-spacing: 0.05em;
   transition: all 0.2s ease;
   position: relative;
-  overflow: hidden;
+  backdrop-filter: blur(4px);
 }
 .hud-btn:hover {
   background: linear-gradient(135deg, rgba(0,255,106,0.15), rgba(0,255,106,0.05));
   border-color: rgba(0,255,106,0.5);
-  box-shadow: 0 0 20px rgba(0,255,106,0.15);
-}
-.hud-btn:active {
-  background: rgba(0,255,106,0.2);
+  box-shadow: 0 0 20px rgba(0,255,106,0.12), 0 4px 12px rgba(0,0,0,0.3);
 }
 .hud-btn-primary {
-  background: linear-gradient(135deg, rgba(0,255,106,0.25), rgba(0,255,106,0.1));
-  border: 1px solid rgba(0,255,106,0.5);
+  background: linear-gradient(135deg, var(--hud-green), var(--hud-green-dim));
+  border: 1px solid rgba(0,255,106,0.6);
   color: #020a04;
-  background-color: var(--hud-green);
 }
 .hud-btn-primary:hover {
-  background-color: var(--hud-green-dim);
-  box-shadow: 0 0 30px rgba(0,255,106,0.3);
+  box-shadow: 0 0 30px rgba(0,255,106,0.3), 0 4px 16px rgba(0,0,0,0.3);
+  filter: brightness(1.1);
 }
 
 /* ═══════════════════════════════════════════
@@ -287,88 +320,49 @@ body {
    ═══════════════════════════════════════════ */
 .hud-input {
   background: rgba(0,255,106,0.03);
-  border: 1px solid rgba(0,255,106,0.15);
+  border: 1px solid rgba(0,255,106,0.12);
   color: var(--hud-text-bright);
   font-family: 'JetBrains Mono', monospace;
   transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
 }
 .hud-input:focus {
   outline: none;
-  border-color: rgba(0,255,106,0.4);
-  box-shadow: 0 0 15px rgba(0,255,106,0.1), inset 0 0 10px rgba(0,255,106,0.03);
+  border-color: rgba(0,255,106,0.35);
+  box-shadow: 0 0 15px rgba(0,255,106,0.08), inset 0 0 10px rgba(0,255,106,0.03);
+  background: rgba(0,255,106,0.04);
 }
-.hud-input::placeholder {
-  color: rgba(0,255,106,0.2);
-}
+.hud-input::placeholder { color: rgba(0,255,106,0.18); }
 
 /* ═══════════════════════════════════════════
-   HORIZONTAL RULE / DIVIDER
+   DIVIDERS
    ═══════════════════════════════════════════ */
 .hud-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,255,106,0.3), rgba(0,255,106,0.3), transparent);
+  background: linear-gradient(90deg, transparent, rgba(0,255,106,0.25), rgba(0,255,106,0.25), transparent);
 }
 .hud-divider-v {
   width: 1px;
-  background: linear-gradient(180deg, transparent, rgba(0,255,106,0.3), rgba(0,255,106,0.3), transparent);
+  background: linear-gradient(180deg, transparent, rgba(0,255,106,0.25), rgba(0,255,106,0.25), transparent);
 }
 
 /* ═══════════════════════════════════════════
    RADAR SPINNER
    ═══════════════════════════════════════════ */
-.radar {
-  position: relative;
-  border: 1px solid rgba(0,255,106,0.3);
-  border-radius: 50%;
-}
+.radar { position: relative; border: 1px solid rgba(0,255,106,0.3); border-radius: 50%; }
 .radar::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
   background: conic-gradient(from 0deg, transparent 0deg, rgba(0,255,106,0.3) 40deg, transparent 80deg);
   animation: radar-spin 3s linear infinite;
 }
-@keyframes radar-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* ═══════════════════════════════════════════
-   ANIMATED BORDER TRACE
-   ═══════════════════════════════════════════ */
-@property --border-angle {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
-}
-.border-trace {
-  --border-angle: 0deg;
-  border: 1px solid transparent;
-  background: 
-    linear-gradient(var(--hud-bg), var(--hud-bg)) padding-box,
-    conic-gradient(from var(--border-angle), transparent 60%, var(--hud-green) 80%, transparent 100%) border-box;
-  animation: border-rotate 4s linear infinite;
-}
-@keyframes border-rotate {
-  to { --border-angle: 360deg; }
-}
+@keyframes radar-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
 /* ═══════════════════════════════════════════
    DATA STREAM
    ═══════════════════════════════════════════ */
-@keyframes datastream {
-  0% { background-position: 0 0; }
-  100% { background-position: 0 -200px; }
-}
+@keyframes datastream { 0% { background-position: 0 0; } 100% { background-position: 0 -200px; } }
 .data-stream {
-  background-image: repeating-linear-gradient(
-    0deg,
-    rgba(0,255,106,0.03) 0px,
-    rgba(0,255,106,0.03) 1px,
-    transparent 1px,
-    transparent 3px
-  );
+  background-image: repeating-linear-gradient(0deg, rgba(0,255,106,0.02) 0px, rgba(0,255,106,0.02) 1px, transparent 1px, transparent 3px);
   background-size: 100% 200px;
   animation: datastream 8s linear infinite;
 }
@@ -376,68 +370,30 @@ body {
 /* ═══════════════════════════════════════════
    ANIMATIONS
    ═══════════════════════════════════════════ */
-@keyframes fadeIn {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
-}
-@keyframes slideUp {
-  0% { opacity: 0; transform: translateY(12px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-@keyframes slideDown {
-  0% { opacity: 0; transform: translateY(-12px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-@keyframes glitch {
-  0%, 100% { transform: translate(0); }
-  20% { transform: translate(-1px, 1px); }
-  40% { transform: translate(1px, -1px); }
-  60% { transform: translate(-1px, -1px); }
-  80% { transform: translate(1px, 1px); }
-}
+@keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes slideUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown { 0% { opacity: 0; transform: translateY(-12px); } 100% { opacity: 1; transform: translateY(0); } }
 @keyframes materialize {
   0% { opacity: 0; transform: scale(0.96); filter: blur(4px) brightness(2); }
   50% { filter: blur(0) brightness(1.2); }
   100% { opacity: 1; transform: scale(1); filter: blur(0) brightness(1); }
 }
-@keyframes typing-cursor {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-@keyframes border-glow-pulse {
-  0%, 100% { border-color: rgba(0,255,106,0.12); }
-  50% { border-color: rgba(0,255,106,0.3); }
-}
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes border-glow-pulse { 0%, 100% { border-color: rgba(0,255,106,0.12); } 50% { border-color: rgba(0,255,106,0.3); } }
 
 .animate-fade { animation: fadeIn 0.3s ease-out; }
 .animate-slide-up { animation: slideUp 0.3s ease-out; }
 .animate-slide-down { animation: slideDown 0.3s ease-out; }
 .animate-materialize { animation: materialize 0.5s ease-out; }
 .animate-float { animation: float 3s ease-in-out infinite; }
-.animate-glitch:hover { animation: glitch 0.3s ease; }
 .animate-border-pulse { animation: border-glow-pulse 3s ease-in-out infinite; }
 
 /* ═══════════════════════════════════════════
    DIFF HIGHLIGHTS
    ═══════════════════════════════════════════ */
-.diff-added {
-  background: rgba(0,255,106,0.08);
-  border-left: 3px solid var(--hud-green);
-}
-.diff-modified {
-  background: rgba(255,170,0,0.08);
-  border-left: 3px solid var(--hud-amber);
-}
-.diff-removed {
-  background: rgba(255,51,68,0.08);
-  border-left: 3px solid var(--hud-red);
-  text-decoration: line-through;
-  opacity: 0.5;
-}
+.diff-added { background: rgba(0,255,106,0.08); border-left: 3px solid var(--hud-green); }
+.diff-modified { background: rgba(255,170,0,0.08); border-left: 3px solid var(--hud-amber); }
+.diff-removed { background: rgba(255,51,68,0.08); border-left: 3px solid var(--hud-red); text-decoration: line-through; opacity: 0.5; }
 
 /* Loading bar */
 .loading-bar {
@@ -445,7 +401,4 @@ body {
   background: linear-gradient(90deg, transparent, var(--hud-green), transparent);
   animation: loading-move 1.5s ease-in-out infinite;
 }
-@keyframes loading-move {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
+@keyframes loading-move { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
